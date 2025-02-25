@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    
+    enivornment {
+         FEATURE_BRANCH = "${NAMESPACE_NAME}-branch"
+    }
+    
+    stages {
+        stage('Execute All Steps') {
+            steps {
+                script {
+                    // Clone the repository
+                    withCredentials([
+                        usernamePassword(credentialsId: "IAM_SERVICE_ACCOUNT_GITHUB_PAT", usernameVariable: 'username', passwordVariable: 'password')])
+                        {
+                            sh """
+                                git clone https://$username:$password@github.com/nbnco/hashicorp-esm-consumers.git
+                                cd hashicorp-esm-consumers
+                                
+                                git checkout -b ${FEATURE_BRANCH}
+                                
+                                echo 'path "${NAMESPACE_NAME}/sys/namespaces" { capabilities = ["read" , "write"] }' >> vault-namespace-administrator.hcl                                
+                                git add .
+                                git commit -m "Add ${NAMESPACE_NAME} value to file"
+                                git push https://$username:$password@github.com/nbnco/hashicorp-esm-consumers.git $FEATURE_BRANCH
+                            """
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+    failure {
+        script {
+            // Remove the feature branch and revert changes
+            sh """
+                git checkout master
+                git branch -D ${FEATURE_BRANCH}
+                git push https://$username:$password@github.com/nbnco/hashicorp-esm-consumers.git --delete ${FEATURE_BRANCH}
+            """
+        }
+    }
+    
+    always {
+        script {
+            // Cleanup workspace if necessary
+            cleanWs()
+        }
+    }
+  }
+}
